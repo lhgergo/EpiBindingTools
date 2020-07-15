@@ -34,32 +34,29 @@ RunNetMHCpan <- function(alleles_loc, pep_loc, results_out_loc, parallel_threads
   }
 }
 
-# CreateRecognMatrix
+# CreateRecognMatrix ----------
 # Loads and processes netMHCpan 4.0 result files into recogn matrices
 # __inputs__
-# results_out_loc: path to directory containing netMHCpan result files.
+# dir: path to directory containing netMHCpan result files.
+# pep: path to pep file which was the input for netMHCpan runs
+# type: "aff" (collects nM affinity values) or "rp" (collects rank percentile values)
 # __outputs__
-# A list, containing two matrices (one for aff and one for rp data).
-# In each matrix the rows represent alleles, the cols represent epitopes, and the numerics in the cells represent binding values
+# a matrix, containing either affinity or rank percentile values of binding between a given epitope and HLA allele
 
-CreateRecognMatrix <- function(results_out_loc) {
-  # collecting result file paths
-  resfiles_paths <- list.files(results_out_loc, full.names = T)
-  
-  # loading result files into a simplified list
-  pblapply(resfiles_paths, function(current_path) {
-    system(paste0("tail -n +51 ", current_path,  " | head -n -5 | tr -s ' '"), intern = T) %>% 
-      strsplit(" ") %>% sapply(function(x) {x[c(3, 4, 14, 15)]}) %>% t()
-  }) -> resdata
-  
-  # collecting alleles and epitopes
-  alleles <- sapply(resdata, function(x) {x[1, 1]})
-  epitopes <- resdata[[1]][, 2]
-  
-  # transforming everything into matrix format
-  recogn_matrix_aff <- t(sapply(resdata, function(x) {as.numeric(x[, 3])})) %>% set_rownames(alleles) %>% set_colnames(epitopes)
-  recogn_matrix_rp <- t(sapply(resdata, function(x) {as.numeric(x[, 4])})) %>% set_rownames(alleles) %>% set_colnames(epitopes)
-  
-  # returning matrices
-  list(aff = recogn_matrix_aff, rp = recogn_matrix_rp)
+CreateRecognMatrix <- function(dir, pep, type = "aff", all_nm_gsub = "HLA-|:|\\*|_|.txt") {
+  result_files = list.files(dir)
+  peptides = readLines(pep)
+  if(type == "rp") indices = c(108, 115) else indices = c(100, 107) 
+  if(length(result_files) > 0) {
+    mtx = t(sapply(result_files, FUN = function(x) {
+      temp = readLines(paste0(dir, x))
+      temp = temp[grepl("PEPLIST ", temp)]
+      if(length(temp) > 0) {
+        temp = as.numeric(substr(temp, indices[1], indices[2]))
+      } else rep(NA, length(peptides))
+    }))
+    rownames(mtx) = gsub(all_nm_gsub, "", rownames(mtx))
+    colnames(mtx) = peptides
+    mtx
+  } else "No file in directory"
 }
